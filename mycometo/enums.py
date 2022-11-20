@@ -43,7 +43,6 @@ class EngineEvents(Enum):
     WS_PACKET = "WS_PACKET"
     LOCAL_PACKET = "LOCAL_PACKET"
     PACKET = "PACKET"
-    # COMMUNICATION = "COMMUNICATION"
 
 
 @unique

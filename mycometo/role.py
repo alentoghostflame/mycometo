@@ -3,12 +3,10 @@ from __future__ import annotations
 from logging import getLogger
 from typing import TYPE_CHECKING
 
-import uuid
 
 from .enums import EngineEvents, IPCClassType
-from .connection import IPCChat, IPCCore
+from .connection import IPCChat
 from . import connection, device
-from .core import DispatchFramework
 
 
 if TYPE_CHECKING:
@@ -27,9 +25,7 @@ logger = getLogger(__name__)
 
 class Role(connection.IPCCore):
     def __init__(self, name: str):
-        # self.events: DispatchFramework = DispatchFramework()
         super().__init__()
-        # self._uuid: str = uuid_override or uuid.uuid1().hex
         self._name: str = name
         self._engine: IPCEngine | None = None
         """Set with the Role is added to an Engine."""

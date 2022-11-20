@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 import uuid
 
 from . import connection
-from .core import DispatchFramework
 
 
 if TYPE_CHECKING:

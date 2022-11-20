@@ -11,8 +11,6 @@ from typing import Coroutine, TYPE_CHECKING
 from .connection import IPCChat, IPCConnection, IPCCore, IPCPacket, get_requestor_info
 from .enums import CoreEvents, EngineEvents, IPCClassType, IPCPayloadType
 
-from .core import DispatchFramework
-
 
 if TYPE_CHECKING:
     from .device import Device
@@ -23,13 +21,6 @@ __all__ = (
     "ConnectionMap",
     "IPCEngine",
 )
-
-
-# WS_ROLE_PATH = "/ws/role/{}"
-
-
-# TODO: Make connection pool object that dictates how connections work? Redundancy/Fallback, multiple connections, etc?
-# TODO: Make connection object that says if something is offline or online? Method that makes a connection?
 
 
 logger = getLogger(__name__)
@@ -53,9 +44,6 @@ class ConnectionMap:
         """{"Role Name": {"Node UUID 1", "Node UUID 2", "etc."}}"""
         self._remote_devices: dict[str, tuple[str, str]] = {}
         """{"Device UUID": ("Role Name", "Node UUID")}"""
-        # TODO: Remote devices need to have their role associated with them. If a role gets added AFTER devices in a
-        #  different node were synced, then local role wont know all devices across the network with that role.
-        #  {"node_uuid": "foo", "role": "role_name"}
 
     @property
     def remote_nodes(self) -> dict[str, web.WebSocketResponse | aiohttp.ClientWebSocketResponse]:
@@ -266,12 +254,9 @@ class ConnectionMap:
 
 class IPCEngine(IPCCore):
     def __init__(self, uuid_override: str | None = None):
-        # self.events: DispatchFramework = DispatchFramework()
         super().__init__()
         self._uuid: str = uuid_override or uuid.uuid1().hex
-        # self._connected_nodes: dict[str, web.WebSocketResponse | aiohttp.ClientWebSocketResponse] = {}
         self._roles: dict[str, Role] = {}
-        # self._devices: dict[str, Device] = {}
         self.map: ConnectionMap = ConnectionMap(self)
         self.session: aiohttp.ClientSession | None = None
         self.running: asyncio.Event = asyncio.Event()
@@ -369,19 +354,11 @@ class IPCEngine(IPCCore):
             await ws.send_json(packet.to_dict())
 
     async def update_node(self, node_uuid: str):
-        # if node_uuid is None or node_uuid == self.uuid:
-        #     raise ValueError("Cannot update with self?? What are you trying to do?")
-
-        # ipc_conn = self.map.ipc_conn_to(self, node_uuid)
-        # if ipc_conn is None:
-        #     raise ValueError("Cannot update with self?? What are you trying to do?")
-
         # This prevents roles/devices that are added while running through this from breaking anything.
         current_roles = self.roles
         current_devices = self.devices
         # async with ipc_conn as conn:
         async with self.map.ipc_conn_to(self, node_uuid) as conn:
-
             for role_name in current_roles:
                 packet = IPCPacket(
                     payload_type=IPCPayloadType.ROLE_ADD,
@@ -455,7 +432,6 @@ class IPCEngine(IPCCore):
                         else:
                             logger.debug("Unhandled non-text message received, discarding.")
 
-                # logger.warning("Outgoing connection closed cleanly, perhaps you should dispatch something someday?")
                 self.map.clean()
 
             except (aiohttp.ClientConnectorError, ConnectionRefusedError) as e:
@@ -536,10 +512,8 @@ class IPCEngine(IPCCore):
                     elif not discovered_node:
                         logger.debug("Non-discovery JSON message was sent before a discovery one, ignoring.")
                     else:
-                        # logger.debug("Incoming Node %s sent a message, dispatching.", node_uuid)
                         self.events.dispatch(EngineEvents.WS_PACKET, ws, packet, node_uuid)
 
-        # logger.warning("Incoming connection closed cleanly, perhaps you should dispatch something someday?")
         self.map.clean()
 
         return ws
@@ -570,7 +544,6 @@ class IPCEngine(IPCCore):
             packet: IPCPacket,
             node_uuid: str
     ):
-        # logger.debug("Node %s informed us of role %s, adding.", node_uuid, packet.data)
         self.map.add_external_role(packet.data, node_uuid)
         self.events.dispatch(EngineEvents.ROLE_ADDED, packet.data, node_uuid)
 
@@ -703,13 +676,6 @@ class IPCEngine(IPCCore):
                     "Unknown WS IPC message type encountered from node %s: %s", node_uuid, packet.type
                 )
 
-    # async def on_communication(self, packet: IPCPacket, origin_node: str | None):
-    #     logger.debug(
-    #         "Communication from node %s for destination type %s, destination name %s received.",
-    #         origin_node, packet.destination_type.name, packet.destination_name
-    #     )
-    #     # logger.debug(packet.data)
-
     def add_role(self, role: Role):
         if role.name in self._roles:
             raise ValueError(f"A role with name {role.name} has already been added.")
@@ -774,11 +740,8 @@ class IPCEngine(IPCCore):
             *,
             port: int = 8080,
             discover_nodes: list[tuple[str, int]] | None = None,
-            # middlewares: list | None = None,
     ) -> web.BaseSite:
         self.session = aiohttp.ClientSession()
-        # full_middlewares = [self.ipc_middleware()] + middlewares if middlewares else []
-        # app = web.Application(middlewares=full_middlewares)
         app = web.Application(middlewares=[self.ipc_middleware()])
         runner = web.AppRunner(app)
         await runner.setup()
@@ -786,7 +749,6 @@ class IPCEngine(IPCCore):
         await site.start()
         logger.info("%s listening on %s.", self.__class__.__name__, site.name)
         await self.start()
-        # self.events.dispatch(EngineEvents.ENGINE_READY)
         if discover_nodes:
             loop = asyncio.get_running_loop()
             for node_address, node_port in discover_nodes:
@@ -803,10 +765,9 @@ class IPCEngine(IPCCore):
             port: int = 8080,
             closing_time: float = 1.0,
             discover_nodes: list[tuple[str, int]] | None = None,
-            # middlewares: list | None = None,
     ):
         loop = loop or asyncio.new_event_loop()
-        task = loop.create_task(self.start_server(port=port, discover_nodes=discover_nodes))  # , middlewares=middlewares))
+        task = loop.create_task(self.start_server(port=port, discover_nodes=discover_nodes))
         try:
             loop.run_forever()
         except KeyboardInterrupt:
