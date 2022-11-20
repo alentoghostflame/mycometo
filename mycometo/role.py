@@ -65,8 +65,6 @@ class Role(connection.IPCCore):
         """Ran when the engine is set. Exists for the sole purpose of being optionally overridden."""
         pass
 
-
-
     def add_device(self, device: Device):
         if device.uuid in self._devices and self._devices[device.uuid] is not device:
             raise ValueError(f"Device with UUID {device.uuid} has already been added to this role.")

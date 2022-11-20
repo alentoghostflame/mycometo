@@ -281,7 +281,7 @@ class IPCConnection:
 
         if self._conn is None:
             # self._engine.events.dispatch(EngineEvents.COMMUNICATION, packet, self._origin_name)
-            self._engine.events.dispatch(EngineEvents.PACKET, packet, self._origin_name)
+            self._engine.events.dispatch(EngineEvents.LOCAL_PACKET, packet)
         else:
             try:
                 await self._conn.send_json(packet.to_dict())

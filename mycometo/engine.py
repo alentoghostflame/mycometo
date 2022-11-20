@@ -150,21 +150,6 @@ class ConnectionMap:
                 f"Node UUID {node_uuid} not found, cannot add device with UUID {device_uuid} and role {device_role}."
             )
 
-    #
-    # def add_device(self, device_uuid: str, origin: str | None) -> bool:
-    #     if origin is None:
-    #         if device_uuid in self._local_devices:
-    #             return False
-    #         else:
-    #             self._local_devices.add(device_uuid)
-    #             return True
-    #     else:
-    #         if device_uuid in self._remote_devices:
-    #             return False
-    #         else:
-    #             self._remote_devices[device_uuid] = origin
-    #             return True
-
     def resolve_node_conn(self, node_uuid: str) -> aiohttp.ClientWebSocketResponse | web.WebSocketResponse | None:
         if node_uuid == self._engine.uuid:
             return None
@@ -384,8 +369,8 @@ class IPCEngine(IPCCore):
             await ws.send_json(packet.to_dict())
 
     async def update_node(self, node_uuid: str):
-        if node_uuid is None or node_uuid == self.uuid:
-            raise ValueError("Cannot update with self?? What are you trying to do?")
+        # if node_uuid is None or node_uuid == self.uuid:
+        #     raise ValueError("Cannot update with self?? What are you trying to do?")
 
         # ipc_conn = self.map.ipc_conn_to(self, node_uuid)
         # if ipc_conn is None:
@@ -420,6 +405,16 @@ class IPCEngine(IPCCore):
                     data={"uuid": device_uuid, "role": device.role.name},
                 )
                 await conn.send_packet(packet)
+
+    def update_self(self):
+        current_roles = self.roles.values()
+        current_devices = self.devices.values()
+
+        for role in current_roles:
+            self.events.dispatch(EngineEvents.LOCAL_ROLE_ADDED, role)
+
+        for device in current_devices:
+            self.events.dispatch(EngineEvents.LOCAL_DEVICE_ADDED, device)
 
     async def ipc_ws_connect(self, url: str) -> aiohttp.ClientWebSocketResponse | None:
         ws = None
@@ -737,6 +732,7 @@ class IPCEngine(IPCCore):
     async def start(self):
         self.running.set()
         self.events.dispatch(EngineEvents.ENGINE_READY)
+        self.update_self()
         logger.debug("IPC Engine started.")
 
     async def close(self, closing_time: float = 1.0):
