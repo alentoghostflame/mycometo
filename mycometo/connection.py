@@ -79,7 +79,7 @@ class IPCPacket:
 
     @property
     def is_request(self) -> bool:
-        return self._uuid is not None
+        return self._uuid is not None and self.is_response is False
 
     @property
     def uuid(self) -> str | None:
