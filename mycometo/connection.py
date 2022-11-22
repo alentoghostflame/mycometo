@@ -47,6 +47,8 @@ class IPCPacket:
             origin_conn_uuid: str | None = None,
             dest_conn_uuid: str | None = None,
             event: str | None = None,
+            packet_uuid: str | None = None,
+            is_response: bool = False,
     ):
         self.type = payload_type
         self.origin_type = origin_type
@@ -66,7 +68,29 @@ class IPCPacket:
         self.dest_conn_uuid = dest_conn_uuid
         """UUID of the target connection, typically used to indicate that the specific connection should be modified."""
         self.event = event
-        """Event that the destination should broadcast with the packet as the sole arg."""
+        """Event that the destination should broadcast with the packet and origin Node UUID as the args."""
+
+        self._uuid = packet_uuid
+        """UUID of the packet. Should only be sent if this packet is requesting or responding."""
+        self._is_response = is_response
+        """Indicates if this packet is a new request or a response to an existing request."""
+
+        self._conn = None
+
+    @property
+    def is_request(self) -> bool:
+        return self._uuid is not None
+
+    @property
+    def uuid(self) -> str | None:
+        return self._uuid
+
+    @property
+    def is_response(self) -> bool:
+        return self._is_response
+
+    def set_connection(self, conn: IPCConnection):
+        self._conn = conn
 
     @classmethod
     def from_connection(
@@ -74,7 +98,10 @@ class IPCPacket:
             conn: IPCConnection,
             payload_type: IPCPayloadType,
             data: ConnDataTypes,
-            event: str | None = None
+            *,
+            event: str | None = None,
+            packet_uuid: str | None = None,
+            is_response: bool = False,
     ) -> IPCPacket:
         ret = cls(
             payload_type=payload_type,
@@ -85,7 +112,9 @@ class IPCPacket:
             dest_name=conn.dest_name,
             data=data,
             origin_conn_uuid=conn.uuid,
-            event=event
+            event=event,
+            packet_uuid=packet_uuid,
+            is_response=is_response,
         )
         return ret
 
@@ -101,6 +130,8 @@ class IPCPacket:
             "origin_conn_uuid": self.origin_conn_uuid,
             "dest_conn_uuid": self.dest_conn_uuid,
             "event": self.event,
+            "_uuid": self._uuid,
+            "_is_response": self._is_response,
         }
         return ret
 
@@ -117,8 +148,18 @@ class IPCPacket:
             origin_conn_uuid=packet["origin_conn_uuid"],
             dest_conn_uuid=packet["dest_conn_uuid"],
             event=packet["event"],
+            packet_uuid=packet["_uuid"],
+            is_response=packet["_is_response"]
         )
         return ret
+
+    async def send_response(self, data: ConnDataTypes):
+        if self.uuid is None:
+            raise ValueError("A response requires the request packet to have a UUID.")
+        elif not isinstance(self._conn, IPCChat):
+            raise ValueError("Responses can only be performed by an IPCChat object.")
+        else:
+            await self._conn.send_response(data, self.uuid)
 
 
 class IPCConnection:
@@ -135,7 +176,6 @@ class IPCConnection:
             dest_node: str,
             dest_type: IPCClassType,
             dest_name: str,
-            # dest_conn_uuid: str | None = None,
             uuid_override: str | None = None,
     ):
         self._engine = engine
@@ -259,6 +299,8 @@ class IPCChat(IPCConnection):
     class CommunicationDenied(Exception):
         pass
 
+    _MESSAGE_REPLY = "MESSAGE_REPLY"
+
     def __init__(
             self,
             *,
@@ -293,6 +335,7 @@ class IPCChat(IPCConnection):
         self._chat_denied: bool = False
         """If the chat request was denied. If True, no further communication data packets should be sent."""
         self._packet_queue: asyncio.Queue[IPCPacket | None] = asyncio.Queue()
+        self._events = DispatchFramework()
 
     @property
     def dest_chat_uuid(self) -> str:
@@ -388,6 +431,24 @@ class IPCChat(IPCConnection):
         packet.dest_conn_uuid = self.dest_chat_uuid
         await self.send_packet(packet)
 
+    async def send_request(self, data: ConnDataTypes, timeout: float = 5.0) -> IPCPacket:
+        """Sends a communication data packet, expecting a response from it."""
+        packet_uuid = uuid.uuid1().hex
+        packet = IPCPacket.from_connection(self, IPCPayloadType.COMMUNICATION, data, packet_uuid=packet_uuid)
+        packet.dest_conn_uuid = self.dest_chat_uuid
+        await self.send_packet(packet)
+        # logger.critical("WAITING FOR P.UUID TO EQUAL %s", packet_uuid)
+        return await self._events.wait_for(self._MESSAGE_REPLY, lambda p: p.uuid == packet_uuid, timeout=timeout)
+
+    async def send_response(self, data: ConnDataTypes, request_uuid: str):
+        packet = IPCPacket.from_connection(
+            self, IPCPayloadType.COMMUNICATION, data, packet_uuid=request_uuid, is_response=True
+        )
+        # logger.critical(packet.__dict__)
+        packet.dest_conn_uuid = self.dest_chat_uuid
+        # logger.critical("Sending response to request uuid %s", request_uuid)
+        await self.send_packet(packet)
+
     async def receive(self) -> IPCPacket | None:
         if self._conn is not None and self._conn.closed:
             raise self.ConnectionClosed("The IPC connection has been closed.")
@@ -419,9 +480,13 @@ class IPCChat(IPCConnection):
 
     async def on_ipc_message(self, packet: IPCPacket, origin_node: str | None):
         if packet.dest_conn_uuid == self.uuid:
+            packet.set_connection(self)
             if self.is_open:
                 if packet.type is IPCPayloadType.COMMUNICATION:
-                    await self._packet_queue.put(packet)
+                    if packet.is_response:
+                        self._events.dispatch(self._MESSAGE_REPLY, packet)
+                    else:
+                        await self._packet_queue.put(packet)
             elif self._chat_denied is False:
                 match packet.type:
                     case IPCPayloadType.COMMUNICATION_ACCEPTED:
