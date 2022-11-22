@@ -640,7 +640,10 @@ class IPCEngine(IPCCore):
             case IPCPayloadType.COMMUNICATION:
                 dest = self.map.get_packet_destination(packet)
                 logger.debug("Chat communication received, routing to %s", dest)
-                dest.events.dispatch(CoreEvents.CHAT_MESSAGE, packet, node_uuid)
+                if packet.event is None:
+                    dest.events.dispatch(CoreEvents.CHAT_MESSAGE, packet, node_uuid)
+                else:
+                    dest.events.dispatch(packet.event, packet, node_uuid)
             case IPCPayloadType.COMMUNICATION_REQUEST:
                 dest = self.map.get_packet_destination(packet)
                 logger.debug("Chat communication request received, routing to %s", dest)
