@@ -425,10 +425,12 @@ class IPCChat(IPCConnection):
         self._ready_for_communication.set()
         await self.close()
 
-    async def send_chat(self, data: ConnDataTypes):
+    async def send_data(self, data: ConnDataTypes, event: str | None = None, set_dest: bool = True):
         """Sends a communication data packet."""
-        packet = IPCPacket.from_connection(self, IPCPayloadType.COMMUNICATION, data=data)
-        packet.dest_conn_uuid = self.dest_chat_uuid
+        packet = IPCPacket.from_connection(self, IPCPayloadType.COMMUNICATION, data=data, event=event)
+        if set_dest:
+            packet.dest_conn_uuid = self.dest_chat_uuid
+
         await self.send_packet(packet)
 
     async def send_request(self, data: ConnDataTypes, timeout: float = 5.0) -> IPCPacket:
