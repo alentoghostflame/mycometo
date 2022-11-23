@@ -178,6 +178,20 @@ class IPCRawConnection:
             dest_name: str,
             uuid_override: str | None = None,
     ):
+        """A "raw" connection to the given destination. Can only send packets, has no receiving capabilities.
+
+        Parameters
+        ----------
+        engine
+        conn
+        origin_type
+        origin_name
+        origin_role
+        dest_node
+        dest_type
+        dest_name
+        uuid_override
+        """
         self._engine = engine
         self._conn = conn
         self._origin_type = origin_type
@@ -223,6 +237,7 @@ class IPCRawConnection:
 
     @classmethod
     def from_packet(cls, requestor: IPCCore, packet: IPCPacket, node_uuid: str) -> IPCRawConnection:
+        """Makes a connection to the origin of the given packet."""
         origin_type, origin_name, origin_role = get_requestor_info(requestor)
         conn = requestor.engine.map.resolve_node_conn(node_uuid)
         ret = cls(
@@ -238,6 +253,7 @@ class IPCRawConnection:
         return ret
 
     async def open(self) -> bool:
+        """Opens the connection, allowing the sending of packets and hooks listeners into the engine."""
         if not self.is_open:
             self._is_open = True
             self._engine.events.add_listener(self._on_engine_close, EngineEvents.ENGINE_CLOSING)
@@ -247,6 +263,7 @@ class IPCRawConnection:
             return False
 
     async def close(self) -> bool:
+        """Closes the connection, preventing sending of packets and unhooking listeners."""
         self._is_open = False
         self._engine.events.remove_listener(self._on_engine_close, EngineEvents.ENGINE_CLOSING)
         self._engine.events.remove_listener(self._on_node_removed, EngineEvents.NODE_REMOVED)
@@ -312,6 +329,22 @@ class IPCRoutedConnection(IPCRawConnection):
             dest_chat_uuid: str | None = None,
             uuid_override: str | None = None
     ):
+        """A "routed" connection to the destination, designed for 2-way communication.
+        Routed Connections must be accepted by the destination before packets can be sent, and can be denied
+        or redirected.
+
+        Parameters
+        ----------
+        requestor:
+            Object requesting this connection to be created.
+        conn:
+            The specific connection to use for communication to the destination.
+        dest_node
+        dest_type
+        dest_name
+        dest_chat_uuid
+        uuid_override
+        """
         origin_type, origin_name, origin_role = get_requestor_info(requestor)
         super().__init__(
             engine=requestor.engine,
@@ -362,6 +395,7 @@ class IPCRoutedConnection(IPCRawConnection):
             raise self.CommunicationDenied("Communication request has been denied.")
 
     async def open(self) -> bool:
+        """Opens the connection, """
         if self._chat_denied:
             raise self.CommunicationDenied("Communication request has been denied.")
 
@@ -437,7 +471,7 @@ class IPCRoutedConnection(IPCRawConnection):
             set_dest: bool = True,
             payload_type: IPCPayloadType = IPCPayloadType.COMMUNICATION
     ):
-        """Sends a data packet."""
+        """Makes and sends a packet with the given data."""
         packet = IPCPacket.from_connection(self, payload_type, data=data, event=event)
         if set_dest:
             packet.dest_conn_uuid = self.dest_chat_uuid
@@ -522,6 +556,7 @@ class IPCCore:
     engine: IPCEngine
 
     def __init__(self):
+        """Contains the core bits required for IPC shared between the Engine, Role, and Device."""
         self.events = DispatchFramework()
         self.events.add_listener(self.on_incoming_chat, CoreEvents.ROUTED_CONN_INCOMING)
         self.events.add_listener(self.on_chat_connection, CoreEvents.ROUTED_CONN_CONNECTION)
@@ -560,6 +595,7 @@ from . import engine, role, device
 
 
 def get_requestor_info(requestor: IPCEngine | Role | Device) -> tuple[IPCClassType, str, str | None]:
+    """Grabs the origin type, name, and role from the given requestor."""
     if isinstance(requestor, engine.IPCEngine):
         origin_type = IPCClassType.ENGINE
         origin_name = requestor.uuid
