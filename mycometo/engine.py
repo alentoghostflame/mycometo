@@ -8,7 +8,7 @@ from aiohttp import web
 from logging import getLogger
 from typing import Coroutine, TYPE_CHECKING
 
-from .connection import IPCChat, IPCConnection, IPCCore, IPCPacket, get_requestor_info
+from .connection import IPCRawConnection, IPCRoutedConnection, IPCCore, IPCPacket, get_requestor_info
 from .enums import CoreEvents, EngineEvents, IPCClassType, IPCPayloadType
 
 
@@ -218,16 +218,16 @@ class ConnectionMap:
 
         return conn, dest_node, dest_type, dest_name
 
-    def ipc_conn_to(
+    def raw_conn_to(
             self,
             requestor: IPCEngine | Role | Device,
             uuid_or_name: str
-    ) -> IPCConnection:
+    ) -> IPCRawConnection:
 
         conn, dest_node, dest_type, dest_name = self.get_destination_info_of(uuid_or_name)
         origin_type, origin_name, origin_role = get_requestor_info(requestor)
 
-        ret = IPCConnection(
+        ret = IPCRawConnection(
             engine=self._engine,
             conn=conn,
             origin_type=origin_type,
@@ -239,9 +239,14 @@ class ConnectionMap:
         )
         return ret
 
-    def ipc_chat_to(self, requestor: IPCEngine | Role | Device, uuid_or_name: str, dest_chat_uuid: str | None = None):
+    def routed_conn_to(
+            self,
+            requestor: IPCEngine | Role | Device,
+            uuid_or_name: str,
+            dest_chat_uuid: str | None = None
+    ):
         conn, dest_node, dest_type, dest_name = self.get_destination_info_of(uuid_or_name)
-        ret = IPCChat(
+        ret = IPCRoutedConnection(
             requestor=requestor,
             conn=conn,
             dest_node=dest_node,
@@ -641,28 +646,28 @@ class IPCEngine(IPCCore):
                 dest = self.map.get_packet_destination(packet)
                 logger.debug("Chat communication received, routing to %s", dest)
                 if packet.event is None:
-                    dest.events.dispatch(CoreEvents.CHAT_MESSAGE, packet, node_uuid)
+                    dest.events.dispatch(CoreEvents.ROUTED_CONN_MESSAGE, packet, node_uuid)
                 else:
                     dest.events.dispatch(packet.event, packet, node_uuid)
             case IPCPayloadType.COMMUNICATION_REQUEST:
                 dest = self.map.get_packet_destination(packet)
                 logger.debug("Chat communication request received, routing to %s", dest)
-                dest.events.dispatch(CoreEvents.INCOMING_CHAT, packet, node_uuid)
+                dest.events.dispatch(CoreEvents.ROUTED_CONN_INCOMING, packet, node_uuid)
                 # TODO: Put in logic to route to the correct place.
             case IPCPayloadType.COMMUNICATION_ACCEPTED:
                 dest = self.map.get_packet_destination(packet)
                 logger.debug("Chat communication acceptance received, routing to %s", dest)
-                dest.events.dispatch(CoreEvents.CHAT_MESSAGE, packet, node_uuid)
+                dest.events.dispatch(CoreEvents.ROUTED_CONN_MESSAGE, packet, node_uuid)
                 # TODO: Put in logic to route to the correct place.
             case IPCPayloadType.COMMUNICATION_DENIED:
                 dest = self.map.get_packet_destination(packet)
                 logger.debug("Chat communication denial received, routing to %s", dest)
-                dest.events.dispatch(CoreEvents.CHAT_MESSAGE, packet, node_uuid)
+                dest.events.dispatch(CoreEvents.ROUTED_CONN_MESSAGE, packet, node_uuid)
                 # TODO: Put in logic to route to the correct place.
             case IPCPayloadType.COMMUNICATION_REDIRECT:
                 dest = self.map.get_packet_destination(packet)
                 logger.debug("Chat communication redirect received, routing to %s", dest)
-                dest.events.dispatch(CoreEvents.CHAT_MESSAGE, packet, node_uuid)
+                dest.events.dispatch(CoreEvents.ROUTED_CONN_MESSAGE, packet, node_uuid)
                 # TODO: Put in logic to route to the correct place.
             case IPCPayloadType.DISCOVERY:
                 logger.warning("We aren't supposed to be able to handle discovery here?")

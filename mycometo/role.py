@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 
 from .enums import EngineEvents, IPCClassType
-from .connection import IPCChat
+from .connection import IPCRoutedConnection
 from . import connection, device
 
 
@@ -108,13 +108,13 @@ class SingleDeviceRole(Role):
         logger.debug("Received incoming connection from %s %s", packet.origin_type, packet.origin_name)
         if self._single_device is None:
             logger.debug("Incoming connection denied due to no device being added.")
-            conn = connection.IPCChat.from_packet(self, packet, node_uuid)
+            conn = connection.IPCRoutedConnection.from_packet(self, packet, node_uuid)
             await conn.deny_chat_request(packet.origin_conn_uuid)
         else:
             logger.debug("Incoming connection redirected to single device.")
             device_uuid = self._single_device.uuid if isinstance(self._single_device, device.Device) else self._single_device
             dev_node_uuid = self.engine.uuid if self._single_device_node is None else self._single_device_node
-            conn = IPCChat.from_packet(self, packet, node_uuid)
+            conn = connection.IPCRoutedConnection.from_packet(self, packet, node_uuid)
             await conn.redirect_chat_request(IPCClassType.DEVICE, device_uuid, dev_node_uuid, packet.origin_conn_uuid)
 
 
