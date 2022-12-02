@@ -228,6 +228,13 @@ class IPCRawConnection:
         return self._dest_name
 
     @property
+    def dest_role(self) -> str | None:
+        if self.dest_type == IPCClassType.DEVICE:
+            return self._engine.map.full_device_info[self.dest_name][0]
+        else:
+            return None
+
+    @property
     def uuid(self) -> str:
         return self._uuid
 

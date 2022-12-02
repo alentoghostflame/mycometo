@@ -83,6 +83,14 @@ class ConnectionMap:
     def devices(self) -> list[str]:
         return list(self.local_devices) + list(self._remote_devices.keys())
 
+    @property
+    def full_device_info(self) -> dict[str, tuple[str, str]]:
+        ret = self._remote_devices.copy()
+        ret.update({
+            device_uuid: (device.role.name, self._engine.uuid) for device_uuid, device in self._engine.devices.items()
+        })
+        return ret
+
     def clean(self):
         for node_uuid, ws in self.remote_nodes.items():
             if ws.closed:
