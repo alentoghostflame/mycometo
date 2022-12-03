@@ -485,10 +485,21 @@ class IPCRoutedConnection(IPCRawConnection):
 
         await self.send_packet(packet)
 
-    async def send_request(self, data: ConnDataTypes, timeout: float = 5.0) -> IPCPacket:
+    async def send_request(
+            self,
+            data: ConnDataTypes,
+            event: str | int | None = None,
+            timeout: float = 5.0
+    ) -> IPCPacket:
         """Sends a communication data packet, expecting a response from it."""
         packet_uuid = uuid.uuid1().hex
-        packet = IPCPacket.from_connection(self, IPCPayloadType.COMMUNICATION, data, packet_uuid=packet_uuid)
+        packet = IPCPacket.from_connection(
+            self,
+            IPCPayloadType.COMMUNICATION,
+            data,
+            event=event,
+            packet_uuid=packet_uuid
+        )
         packet.dest_conn_uuid = self.dest_chat_uuid
         await self.send_packet(packet)
         # logger.critical("WAITING FOR P.UUID TO EQUAL %s", packet_uuid)
@@ -539,6 +550,8 @@ class IPCRoutedConnection(IPCRawConnection):
                 if packet.type is IPCPayloadType.COMMUNICATION:
                     if packet.is_response:
                         self._events.dispatch(self._MESSAGE_REPLY, packet)
+                    elif packet.event:
+                        self._requestor.events.dispatch(packet.event, packet)
                     else:
                         await self._packet_queue.put(packet)
             elif self._chat_denied is False:

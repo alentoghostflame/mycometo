@@ -653,7 +653,7 @@ class IPCEngine(IPCCore):
             case IPCPayloadType.COMMUNICATION:
                 dest = self.map.get_packet_destination(packet)
                 logger.debug("Chat communication received, routing to %s", dest)
-                if packet.event is None:
+                if packet.event is None or packet.dest_conn_uuid is not None:
                     dest.events.dispatch(CoreEvents.ROUTED_CONN_MESSAGE, packet, node_uuid)
                 else:
                     dest.events.dispatch(packet.event, packet, node_uuid)
