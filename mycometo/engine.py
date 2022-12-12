@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import aiohttp
 import asyncio
+import signal
 import uuid
 
 from aiohttp import web
@@ -28,6 +29,8 @@ logger = getLogger(__name__)
 
 CONNECT_RETRY_SLEEP = 10  # Time in seconds.
 ENGINE_IPC_ROUTE = "engine/ipc"
+ON_SIGNAL_CLOSE = (signal.SIGINT, signal.SIGTERM)
+"""On what signals should the engine attempt to close itself with."""
 
 
 class ConnectionMap:
@@ -720,6 +723,7 @@ class IPCEngine(IPCCore):
     async def close(self, closing_time: float = 1.0):
         self.events.dispatch(EngineEvents.ENGINE_CLOSING)
         await self.session.close()
+
         await asyncio.sleep(closing_time)
 
     async def start_serverless(self, *, discover_nodes: list[tuple[str, int]] | None) -> None:
@@ -782,17 +786,28 @@ class IPCEngine(IPCCore):
             closing_time: float = 1.0,
             discover_nodes: list[tuple[str, int]] | None = None,
     ):
+        def on_interrupt():
+            logger.info("Stop signal encountered, stopping event loop.")
+            loop.stop()
+
         loop = loop or asyncio.new_event_loop()
+
+        for sig in ON_SIGNAL_CLOSE:
+            loop.add_signal_handler(sig, on_interrupt)
+
         task = loop.create_task(self.start_server(port=port, discover_nodes=discover_nodes))
         try:
             loop.run_forever()
         except KeyboardInterrupt:
             logger.debug("KeyboardInterrupt encountered, stopping loop.")
-            if site := task.result():
-                logger.debug("Site was created, attempting to stop it.")
-                loop.run_until_complete(site.stop())
-            else:
-                logger.debug("Cancelling start task.")
-                task.cancel()
+        except Exception as e:
+            logger.error("Exception occurred that broke out of the event loop, wtf?", exc_info=e)
 
-            loop.run_until_complete(self.close(closing_time))
+        if site := task.result():
+            logger.debug("Site was created, attempting to stop it.")
+            loop.run_until_complete(site.stop())
+        else:
+            logger.debug("Cancelling start task.")
+            task.cancel()
+
+        loop.run_until_complete(self.close(closing_time))
