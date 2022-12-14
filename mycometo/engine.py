@@ -374,7 +374,7 @@ class IPCEngine(IPCCore):
         current_roles = self.roles
         current_devices = self.devices
         # async with ipc_conn as conn:
-        async with self.map.ipc_conn_to(self, node_uuid) as conn:
+        async with self.map.raw_conn_to(self, node_uuid) as conn:
             for role_name in current_roles:
                 packet = IPCPacket(
                     payload_type=IPCPayloadType.ROLE_ADD,
