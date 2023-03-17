@@ -68,7 +68,7 @@ class IPCPacket:
         self.dest_conn_uuid = dest_conn_uuid
         """UUID of the target connection, typically used to indicate that the specific connection should be modified."""
         self.event = event
-        """Event that the destination should broadcast with the packet and origin Node UUID as the args."""
+        """Event that the destination should broadcast with the packet as the arg."""
 
         self._uuid = packet_uuid
         """UUID of the packet. Should only be sent if this packet is requesting or responding."""
