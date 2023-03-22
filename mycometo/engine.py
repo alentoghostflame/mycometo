@@ -340,7 +340,7 @@ class IPCEngine(IPCCore):
     async def run_stoppable_task(self, coroutine: Coroutine, timeout=0.1) -> asyncio.Task:
         loop = asyncio.get_running_loop()
         task = loop.create_task(coroutine)
-        while True:
+        while self.running.is_set():
             try:
                 await self.events.wait_for(EngineEvents.ENGINE_CLOSING, timeout=timeout)
             except asyncio.TimeoutError:

@@ -3,7 +3,11 @@ from __future__ import annotations
 from enum import Enum
 from types import MethodType
 from typing import Callable
+
+import gc
+
 import asyncio
+import weakref
 
 
 __all__ = (
@@ -87,6 +91,9 @@ __all__ = (
 #             raise StopIteration
 
 
+EVENT_TYPE = str | type | Enum
+
+
 # @ClassMaker
 class ListenerClass:
     event: str | type
@@ -102,10 +109,14 @@ class WaitForCheck:
         self.future: asyncio.Future = future
         self.check: Callable[..., bool] = check
 
+    def __await__(self):
+        yield from self.future
+
 
 class DispatchFramework:
     __permanent_listeners__: dict[str | type, set[Callable]]
     __temporary_listeners__: dict[str | type, set[WaitForCheck]]
+    # __temporary_listeners__: dict[str | type, weakref.WeakSet[WaitForCheck]]
 
     def __new__(cls, *args, **kwargs):
         new_cls = super(DispatchFramework, cls).__new__(cls)
@@ -127,7 +138,7 @@ class DispatchFramework:
                     base.__dict__[elem] = MethodType(value.event, self)
                     self.__permanent_listeners__[value.event].add(base.__dict__[elem])
 
-    def add_listener(self, func: ListenerClass | Callable, event: str | type | Enum):
+    def add_listener(self, func: ListenerClass | Callable, event: EVENT_TYPE):
         if isinstance(func, ListenerClass):
             event = event or func.event
             func = func.callback
@@ -156,7 +167,7 @@ class DispatchFramework:
 
         return wrapper
 
-    def wait_for(self, event: type | str | Enum, check: Callable[..., bool] | None = None, timeout: float | None = None):
+    async def wait_for(self, event: type | str | Enum, check: Callable[..., bool] | None = None, timeout: float | None = None):
         future = asyncio.get_running_loop().create_future()
         if not check:
             def _check(*args, **kwargs):
@@ -167,8 +178,17 @@ class DispatchFramework:
         if event not in self.__temporary_listeners__:
             self.__temporary_listeners__[event] = set()
 
-        self.__temporary_listeners__[event].add(WaitForCheck(future, check))
-        return asyncio.wait_for(future, timeout=timeout)
+        check = WaitForCheck(future, check)
+        self.__temporary_listeners__[event].add(check)
+
+        try:
+            ret = await asyncio.wait_for(future, timeout=timeout)
+        except Exception as e:
+            raise e
+        else:
+            return ret
+        finally:
+            self.__temporary_listeners__[event].discard(check)
 
     def dispatch(self, event: type | str | Enum, *args, **kwargs):
         loop = asyncio.get_running_loop()
