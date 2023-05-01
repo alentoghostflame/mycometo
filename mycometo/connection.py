@@ -607,7 +607,10 @@ class IPCCore:
     async def on_chat_connection(self, chat: IPCRoutedConnection):
         """Ran when an incoming connection is established and accepted."""
         await chat.close()
-        raise NotImplementedError
+        raise NotImplementedError(
+            "Ran when an incoming connection is successfully established and accepted. "
+            "This method needs to be overridden for the connection to not auto-close and this raised."
+        )
 
 
 # Importing all the way down here helps prevent import errors.
